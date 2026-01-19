@@ -18,37 +18,66 @@ router_llm = OpenAI()
 
 chat_router = r = APIRouter()
 
-ROUTER_PROMPT = get_router_prompt()
-
-def build_router_messages(messages, last_user_message, max_history=5):
-    history = [m for m in messages if m.role == MessageRole.USER]
-    history = history[-max_history:]
-
-    router_msgs = [
-        ChatMessage(role=MessageRole.SYSTEM, content=ROUTER_PROMPT),
-    ]
-
-    for m in history:
-        router_msgs.append(
-            ChatMessage(role=MessageRole.USER, content=m.content)
-        )
-
-    router_msgs.append(
-        ChatMessage(role=MessageRole.USER, content=last_user_message)
-    )
-
-    return router_msgs
+verbose = True
 
 
-async def route_message_with_context(messages, last_user_text):
-    router_messages = build_router_messages(messages, last_user_text)
+# def build_router_messages(messages, last_user_message, max_history=5):
+#     history = [m for m in messages if m.role == MessageRole.USER]
+#     history = history[-max_history:]
 
-    llm_resp = await router_llm.achat(router_messages)
-    raw = llm_resp.message.content
+#     router_msgs = [
+#         ChatMessage(role=MessageRole.SYSTEM, content=ROUTER_PROMPT),
+#     ]
 
+#     for m in history:
+#         router_msgs.append(
+#             ChatMessage(role=MessageRole.USER, content=m.content)
+#         )
+
+#     router_msgs.append(
+#         ChatMessage(role=MessageRole.USER, content=last_user_message)
+#     )
+
+#     return router_msgs
+
+# async def route_message_with_context(messages, last_user_text):
+#     router_messages = build_router_messages(messages, last_user_text)
+
+#     llm_resp = await router_llm.achat(router_messages)
+#     raw = llm_resp.message.content
+
+#     decision = _DecisionMessage.model_validate_json(raw)
+
+#     return decision.message
+
+def get_agent_user_message(data:_ChatData):
+    agent_message = ""
+    user_message = ""
+    for m in data.messages[-2:]:
+        if m.role == "user":
+            user_message = m.content
+        else:
+            agent_message = m.content
+
+    return agent_message, user_message
+
+def route_query(agent_message:str, user_message:str):
+    prompt = get_router_prompt(agent_message, user_message)
+    res = OpenAI().complete(prompt, formatted=True)
+
+    if verbose:
+        print("prompt:\n ", prompt)
+        print("------------------")
+        print("Route to: \n", str(res))
+        print("-----------------------------")
+    
+    raw = res.text
+    
+    print("Raw response:")
+    print(raw)
+    
     decision = _DecisionMessage.model_validate_json(raw)
-
-    return decision.message
+    return decision
 
 @r.post("")
 async def chat(
@@ -61,6 +90,9 @@ async def chat(
             detail="No messages provided.",
         )
         
+        
+    agent_message, user_message = get_agent_user_message(data)
+        
     lastMessage = data.messages.pop()
     if lastMessage.role != MessageRole.USER:
         raise HTTPException(
@@ -72,7 +104,7 @@ async def chat(
     
     
      # 1) ROUTE
-    decision = await route_message_with_context(messages=messages, last_user_text=lastMessage.content)
+    decision = route_query(agent_message=agent_message, user_message=user_message)
     print("Router decision:", decision)
 
     print("prompt: \n", lastMessage)
@@ -81,7 +113,7 @@ async def chat(
     print("Fetching the agent...")
 
     # 2) PICK AGENT
-    if decision == _DecisionType.SQL_AGENT:
+    if decision.message == _DecisionType.SQL_AGENT:
         print("Fetcing sql agent...")
         agent = get_sql_agent()
     else:

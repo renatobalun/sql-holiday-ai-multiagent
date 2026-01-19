@@ -1,4 +1,6 @@
-router_prompt = """You are a routing classifier for a multi-agent system.
+def get_router_prompt(agent_message:str, user_message:str):
+  
+  router_prompt = f"""You are a routing classifier for a multi-agent system.
 
 Your task is to decide which agent should handle the user's request.
 
@@ -44,16 +46,21 @@ SPECIAL RULES:
 
 OUTPUT FORMAT:
 Return ONLY valid JSON in this exact format:
-{
+{{
   "message": "SQL_AGENT"
-}
+}}
 or
-{
+{{
   "message": "HOLIDAY_AGENT"
-}
+}}
 
 Do not add any explanation, extra text, or formatting.
-"""
 
-def get_router_prompt():
-    return router_prompt
+[Conversation]
+<agent_message>{agent_message}</agent_message>
+<user_message>{user_message}</user_message>
+
+"""
+  
+  
+  return router_prompt
